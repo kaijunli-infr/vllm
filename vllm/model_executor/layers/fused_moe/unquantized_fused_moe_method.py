@@ -165,31 +165,12 @@ class UnquantizedFusedMoEMethod(FusedMoEMethodBase, CustomOp):
                 routing_tables=layer._expert_routing_tables(),
             )
 
-            if self.unquantized_backend == UnquantizedMoeBackend.CPU:
-                # The CPU experts need the layer itself for the setup that
-                # convert_to_unquantized_kernel_format cannot express, since
-                # it only sees the two weight tensors: padding and prepacking
-                # into the grouped-gemm layout (bias included), and capturing
-                # the router config that monolithic apply() cannot carry.
-                self.moe_kernel.fused_experts.process_weights_after_loading(layer)
-            elif self.unquantized_backend == UnquantizedMoeBackend.MOONEP:
-                # Hand the [E+B] layout built by
-                # convert_to_unquantized_kernel_format to the P/F (weight
-                # prefetch) and the experts (up projection).
-                from vllm.model_executor.layers.fused_moe.experts.moonep_experts import (  # noqa: E501
-                    MoonEPExperts,
-                )
-                from vllm.model_executor.layers.fused_moe.prepare_finalize.moonep import (  # noqa: E501
-                    MoonEPPrepareAndFinalize,
-                )
-
-                layout = layer._moonep_weight_layout
-                pf = self.moe_kernel.prepare_finalize
-                experts = self.moe_kernel.fused_experts
-                assert isinstance(pf, MoonEPPrepareAndFinalize)
-                assert isinstance(experts, MoonEPExperts)
-                pf.set_weight_layout(layout)
-                experts.set_up_weight(layout.full_up_weight)
+            # No-op by default. Experts that need the layer itself for setup
+            # convert_to_unquantized_kernel_format cannot express override
+            # it: CPU prepacks into its grouped-gemm layout and captures the
+            # router config; MoonEP picks up the [E+B] weight layout for
+            # prefetch and the up projection.
+            self.moe_kernel.fused_experts.process_weights_after_loading(layer)
 
     def process_weights_after_loading(self, layer: "RoutedExperts") -> None:
         super().process_weights_after_loading(layer)
